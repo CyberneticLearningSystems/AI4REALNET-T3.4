@@ -13,7 +13,6 @@ from src.controllers.PPOController import PPOController
 from src.controllers.LSTMController import LSTMController
 from src.configs.ControllerConfigs import ControllerConfig
 from src.configs.EnvConfig import BaseEnvConfig
-from src.algorithms.PPO.PPOWorker import PPOWorker
 from src.algorithms.loss import value_loss, value_loss_with_IS, policy_loss
 from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
 from src.utils.observation.obs_utils import obs_dict_to_tensor
@@ -23,6 +22,7 @@ from src.utils.observation.normalisation import FlatlandNormalisation
 class PPOLearner():
     """
     Learner class for the PPO Algorithm.
+    # TODO: Check for compatibility with Gym and PettingZoo environments
     """
     def __init__(self, controller_config: ControllerConfig, learner_config: Dict, env_config: BaseEnvConfig, device: str = None) -> None:
         # Initialise environment and set controller / learning parameters

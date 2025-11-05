@@ -15,11 +15,8 @@ import torch.multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.managers import DictProxy
 
-from src.controllers.BaseController import Controller
-from src.controllers.PPOController import PPOController
-from src.controllers.LSTMController import LSTMController
 from src.configs.ControllerConfigs import ControllerConfig
-from src.configs.EnvConfig import FlatlandEnvConfig
+from src.configs.EnvConfig import BaseEnvConfig
 from src.algorithms.Sync_PPO.PPOWorker import PPOWorker
 from src.algorithms.loss import value_loss, value_loss_with_IS, policy_loss
 from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
@@ -30,7 +27,7 @@ class PPOLearner():
     """
     Learner class for the PPO Algorithm.
     """
-    def __init__(self, controller_config: ControllerConfig, learner_config: Dict, env_config: FlatlandEnvConfig, device: str = None) -> None:
+    def __init__(self, controller_config: ControllerConfig, learner_config: Dict, env_config: BaseEnvConfig, device: str = None) -> None:
         # Initialise environment and set controller / learning parameters
         self.env_config = env_config
         self._init_learning_params(learner_config)
@@ -54,7 +51,10 @@ class PPOLearner():
         self.controller_config = config
         self.n_nodes: int = config.config_dict['n_nodes']
         self.state_size: int = config.config_dict['state_size']
-        self.controller: Union[PPOController, LSTMController, Controller] = config.create_controller()
+        self.entropy_coeff: float = config.config_dict['entropy_coefficient']
+        self.value_loss_coeff: float = config.config_dict['value_loss_coefficient']
+        self.gamma: float = config.config_dict['gamma']
+        self.controller: ControllerConfig = config.create_controller()
 
     def _init_learning_params(self, learner_config: Dict) -> None:
         self.max_steps: int = learner_config['max_steps']
@@ -131,17 +131,17 @@ class PPOLearner():
             worker.start()
         self._broadcast_controller_state() # initial weight broadcast
         # self._initialise_normalisation()
-
+        
         interrupted = False
-
         try:
             # gather rollouts and update when enough data is collected
             while self.completed_updates < self.target_updates:
                 self.barrier.wait()  # wait for workers to finish their rollout
                 for _ in range(self.n_workers):
                     # gather rollouts from workers
-                    try:
+                    try: 
                         self._gather_rollout()
+                        
                     except Exception as e:
                         print(f"Error: {e}")
                         continue
@@ -185,12 +185,12 @@ class PPOLearner():
             for w in workers:
                 if w.is_alive():
                     w.terminate()
-
+            
             wandb.finish()
+
             if interrupted:
                 self._save_model('interrupt')
             self._save_model()
-
 
     def _gather_rollout(self) -> None:
         """ Gather episodes from rollout queue and add to training rollout. """
@@ -209,7 +209,7 @@ class PPOLearner():
         self.shared_weights['controller_state'] = controller_state
         self.shared_weights['update_step'] = self.completed_updates
         self.barrier.wait()  # wait for all workers to acknowledge the new weights
-
+        
 
     def _save_model(self, suffix: Optional[str] = None) -> None:
         """Persist the current controller parameters to disk."""
@@ -271,7 +271,7 @@ class PPOLearner():
                 new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(minibatch['states'], minibatch['next_states'], minibatch['actions'])
                 minibatch['new_log_probs'] = new_log_probs
                 minibatch['new_state_values'] = new_state_values.squeeze(-1)
-                minibatch['bootstrap_values'] = new_next_state_values.squeeze(-1)
+                minibatch['new_next_state_values'] = new_next_state_values.squeeze(-1)
                 minibatch['entropy'] = entropy
 
                 total_loss, actor_loss, critic_loss = self._loss(minibatch)
@@ -303,7 +303,6 @@ class PPOLearner():
                 entropy_sum = torch.cat((entropy_sum, minibatch['entropy'].detach()))
                 old_log_probs_sum = torch.cat((old_log_probs_sum, minibatch['log_probs'].detach()))
                 new_log_probs_sum = torch.cat((new_log_probs_sum, new_log_probs.detach()))
-
             self.epochs += 1
             wandb.log({
                 'epoch': self.epochs,
@@ -353,7 +352,6 @@ class PPOLearner():
 
         # Total loss & optimisation step
         total_loss: Tensor = actor_loss + critic_loss * self.value_loss_coeff + entropy_loss * self.entropy_coeff
-        return total_loss, actor_loss, critic_loss
 
 
     def _gaes(self) -> Tuple[float, float]:

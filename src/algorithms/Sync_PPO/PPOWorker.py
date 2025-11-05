@@ -111,7 +111,7 @@ class PPOWorker(mp.Process):
         self.total_episodes = 0
         current_state_tensor: Tensor = self._observation_to_tensor(current_state_dict)
         current_state_tensor = self.normalise_observation(current_state_tensor)
-        dones = {i: False for i in range(n_agents)}
+        dones = {i: False for i in range(self.n_agents)}
 
         while not self.done_event.is_set():
             actions, log_probs, values, extras = self.controller.sample_action(current_state_tensor)
