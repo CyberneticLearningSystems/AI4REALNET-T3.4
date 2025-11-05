@@ -3,7 +3,7 @@ import sys
 import random
 import argparse
 import numpy as np
-from typing import Dict
+from typing import Any, Dict, Union
 
 import torch
 
@@ -14,13 +14,12 @@ if src_path not in sys.path:
 
 from src.utils.file_utils import load_config_file
 from src.utils.observation.obs_utils import calculate_state_size
-
-from src.configs.EnvConfig import FlatlandEnvConfig
+from src.configs.EnvConfig import _resolve_env_config, BaseEnvConfig
 from src.configs.ControllerConfigs import PPOControllerConfig
 from src.algorithms.PPO.PPOLearner import PPOLearner
 
 
-def train_ppo(controller_config: PPOControllerConfig, learner_config: Dict, env_config: Dict, device: str) -> None:
+def train_ppo(controller_config: PPOControllerConfig, learner_config: Dict, env_config: BaseEnvConfig, device: str) -> None:
     learner = PPOLearner(controller_config=controller_config,
                          learner_config=learner_config,
                          env_config=env_config,
@@ -42,14 +41,24 @@ if __name__ == '__main__':
     # prepare environment config
     if args.random_seed:
         config['environment_config']['random_seed'] = args.random_seed
-    env_config = FlatlandEnvConfig(config['environment_config'])
+    env_config = _resolve_env_config(config['environment_config'])
 
     # prepare controller config and setup parallelisation
     learner_config = config['learner_config']
 
     # prepare controller
-    config['controller_config']['n_nodes'], config['controller_config']['state_size'] = calculate_state_size(env_config.observation_builder_config['max_depth'])
-    controller_config = PPOControllerConfig(config['controller_config'])
+    controller_config_dict = config['controller_config']
+    env_type = getattr(env_config, 'env_type', 'flatland')
+    if env_type == 'flatland':
+        n_nodes, state_size = calculate_state_size(env_config.observation_builder_config['max_depth'])
+        controller_config_dict['n_nodes'] = n_nodes
+        controller_config_dict['state_size'] = state_size
+    else:
+        controller_config_dict['state_size'] = getattr(env_config, 'state_size')
+        controller_config_dict['action_size'] = getattr(env_config, 'action_size')
+        controller_config_dict['n_nodes'] = controller_config_dict.get('n_nodes', 1)
+        controller_config_dict['n_features'] = controller_config_dict['state_size']
+    controller_config = PPOControllerConfig(controller_config_dict)
 
 
     train_ppo(controller_config = controller_config,

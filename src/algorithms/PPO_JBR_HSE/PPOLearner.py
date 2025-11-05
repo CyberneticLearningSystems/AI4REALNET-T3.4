@@ -14,14 +14,14 @@ from src.algorithms.PPO_JBR_HSE.PPORollout import PPORollout
 from src.algorithms.PPO_JBR_HSE.PPORunner import PPORunner
 
 from src.configs.ControllerConfigs import PPOControllerConfig
-from src.configs.EnvConfig import FlatlandEnvConfig
+from src.configs.EnvConfig import BaseEnvConfig
 from src.configs.OptimiserConfig import AdamConfig
 
 class PPOLearner():
     """
     Learner class for the PPO algorithm, updates the policy based on experiences (rollouts).
     """
-    def __init__(self,  controller_config: PPOControllerConfig, env_config: FlatlandEnvConfig, device: str, n_workers: int = 1) -> None: 
+    def __init__(self,  controller_config: PPOControllerConfig, env_config: BaseEnvConfig, device: str, n_workers: int = 1) -> None: 
         self.n_workers = n_workers
         self.device = device
 
@@ -29,8 +29,7 @@ class PPOLearner():
         controller_config.config_dict['n_nodes'] = n_nodes
         controller_config.config_dict['state_size'] = state_size
 
-        self.max_depth = env_config['max_depth']
-        (env_config['observation_builder_config']['max_depth'])
+        self.max_depth = env_config.observation_builder_config['max_depth']
         controller_config['actor_config']['n_nodes'] = n_nodes # TODO: add n_nodes as a model parameter
         controller_config['critic_config']['n_nodes'] = n_nodes
         controller_config['state_size'] = state_size

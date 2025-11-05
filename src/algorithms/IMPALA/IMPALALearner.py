@@ -23,14 +23,14 @@ from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
 from src.algorithms.loss import vtrace
 
 from flatland.envs.rail_env import RailEnv
-from src.configs.EnvConfig import FlatlandEnvConfig
+from src.configs.EnvConfig import BaseEnvConfig
 
 class IMPALALearner(): 
     """
     Learner class for the IMPALA Algorithm.
     # TODO: generalise from PPOControllerConfig to base class
     """
-    def __init__(self, controller_config: PPOControllerConfig, learner_config: Dict, env_config: FlatlandEnvConfig, device: str = None) -> None:
+    def __init__(self, controller_config: PPOControllerConfig, learner_config: Dict, env_config: BaseEnvConfig, device: str = None) -> None:
         # Initialise environment and set controller / learning parameters
         self.env_config = env_config
         self._init_learning_params(learner_config)

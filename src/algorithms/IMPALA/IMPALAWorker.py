@@ -10,7 +10,7 @@ from multiprocessing.synchronize import Event
 from multiprocessing.managers import DictProxy
 
 from src.utils.observation.obs_utils import obs_dict_to_tensor
-from src.configs.EnvConfig import FlatlandEnvConfig
+from src.configs.EnvConfig import BaseEnvConfig
 from src.controllers.PPOController import PPOController
 from src.configs.ControllerConfigs import PPOControllerConfig, LSTMControllerConfig
 from src.controllers.LSTMController import LSTMController
@@ -22,7 +22,7 @@ class IMPALAWorker(mp.Process):
     the entry point is the run() function. This 
     """
 
-    def __init__(self, worker_id: Union[str, int], env_config: FlatlandEnvConfig, controller_config: Union[PPOControllerConfig, LSTMControllerConfig], 
+    def __init__(self, worker_id: Union[str, int], env_config: BaseEnvConfig, controller_config: Union[PPOControllerConfig, LSTMControllerConfig], 
                  logging_queue: mp.Queue, rollout_queue: mp.Queue, shared_weights: DictProxy, barrier, done_event: Event,
                  max_steps: Tuple = (10000, 1000), device: str = 'cpu'):
         super().__init__()
@@ -38,7 +38,7 @@ class IMPALAWorker(mp.Process):
         self.policy_update_step: int = 0
 
         # env and controller setup
-        self.env_config: FlatlandEnvConfig = env_config
+        self.env_config: BaseEnvConfig = env_config
         self._init_env()
         self.controller_config: PPOControllerConfig = controller_config
         self.controller: PPOController = self.controller_config.create_controller()
