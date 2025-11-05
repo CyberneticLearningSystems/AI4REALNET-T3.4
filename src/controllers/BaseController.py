@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Tuple
 from torch import Tensor
 import torch.nn as nn
 
@@ -12,15 +12,15 @@ class Controller:
         """
         Update the weights of the networks in the controller.
         """
-        pass
+        raise NotImplementedError
 
     def get_state_dict(self) -> Dict:
         """
         Get the state dictionary of the networks in the controller.
         """
-        pass
+        raise NotImplementedError
 
-    def sample_action(self, state: Tensor) -> Tensor:
+    def sample_action(self, state: Tensor) -> Tuple[Tensor, Tensor, Tensor, Dict[str, Tensor]]:
         """
         Sample an action from the distribution provided by the network based on the current state.
 
@@ -31,7 +31,7 @@ class Controller:
             - actions: Tensor   (n_agents, batch_size)
             - log_probs: Tensor (n_agents, batch_size)
         """
-        pass
+        raise NotImplementedError
 
     def state_values(self, states: Tensor) -> Tensor:
         """
@@ -43,5 +43,4 @@ class Controller:
         Returns:
             - values: Tensor    (n_agents, 1)
         """
-        pass
-
+        raise NotImplementedError

@@ -64,10 +64,7 @@ class LSTMController(nn.Module):
 
     def get_state_dict(self) -> Dict:
         return self.lstm_network.get_state_dict()
-    
-    def update_weights(self, network_params: Dict) -> None:
-        self.lstm_network.update_weights(network_params)
-    
+        
     def reset_hidden_states(self) -> None:
         self.lstm_network.reset_hidden_states()
 
