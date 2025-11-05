@@ -4,11 +4,12 @@ from torch import Tensor
 from typing import Dict, Tuple, Union
 
 from src.algorithms.PPO_JBR_HSE.PPORunner import PPORunner
-from src.configs.EnvConfig import FlatlandEnvConfig
+from src.configs.EnvConfig import BaseEnvConfig
+from src.configs.ControllerConfigs import ControllerConfig
 
 @ray.remote
 class PPOWorker():
-    def __init__(self, worker_handle: Union[int, str], env_config: FlatlandEnvConfig, controller_config, device: str = 'cpu', max_steps: int = 1e10) -> None: 
+    def __init__(self, worker_handle: Union[int, str], env_config: BaseEnvConfig, controller_config: ControllerConfig, device: str = 'cpu', max_steps: int = 1e10) -> None: 
         self.worker_handle = worker_handle
         self.max_steps = max_steps
         self.env = env_config.create_env()
@@ -18,7 +19,7 @@ class PPOWorker():
         self.lam = controller_config.lam
         self.gae_horizon = controller_config.gae_horizon
 
-        self.runner = PPORunner(env=self.env, controller=self.controller)
+        self.runner = PPORunner(runner_handle=worker_handle, env_config=env_config, controller=self.controller)
 
 
     def run(self, ppo_network_parameters, critic_network_parameters) -> Tuple[Dict]:

@@ -16,7 +16,7 @@ from multiprocessing.synchronize import Event
 from multiprocessing.managers import DictProxy
 
 from src.configs.ControllerConfigs import ControllerConfig
-from src.configs.EnvConfig import FlatlandEnvConfig, PettingZooEnvConfig
+from src.configs.EnvConfig import BaseEnvConfig
 from src.algorithms.PPO.PPOWorker import PPOWorker
 from src.algorithms.loss import value_loss, value_loss_with_IS, policy_loss
 from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
@@ -27,7 +27,7 @@ class PPOLearner():
     """
     Learner class for the PPO Algorithm.
     """
-    def __init__(self, controller_config: ControllerConfig, learner_config: Dict, env_config: Union[FlatlandEnvConfig, PettingZooEnvConfig], device: str = None) -> None:
+    def __init__(self, controller_config: ControllerConfig, learner_config: Dict, env_config: BaseEnvConfig, device: str = None) -> None:
         # Initialise environment and set controller / learning parameters
         self.env_config = env_config
         self._init_learning_params(learner_config)

@@ -14,7 +14,7 @@ from src.utils.observation.obs_utils import obs_dict_to_tensor
 from src.utils.observation.normalisation import FlatlandNormalisation, IdentityNormalisation
 from src.utils.observation.RunningMeanStd import RunningMeanStd
 
-from src.configs.EnvConfig import FlatlandEnvConfig, PettingZooEnvConfig
+from src.configs.EnvConfig import BaseEnvConfig
 from src.controllers.PPOController import PPOController
 from src.configs.ControllerConfigs import ControllerConfig
 from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
@@ -26,7 +26,7 @@ class PPOWorker(mp.Process):
     Worker class that inherits from torch.multiprocessing.Process, meaning that when the .start() method is called on PPOWorker,
     the entry point is the run() function. This 
     """
-    def __init__(self, worker_id: Union[str, int], env_config: Union[FlatlandEnvConfig, PettingZooEnvConfig], controller_config: ControllerConfig, logging_queue: mp.Queue, 
+    def __init__(self, worker_id: Union[str, int], env_config: BaseEnvConfig, controller_config: ControllerConfig, logging_queue: mp.Queue, 
                  rollout_queue: mp.Queue, barrier, shared_weights, done_event: Event, max_steps: Tuple = (10000, 1000), device: str = 'cpu'):
         super().__init__()
 
@@ -43,7 +43,7 @@ class PPOWorker(mp.Process):
         self.local_update_step: int = -1
 
         # env and controller setup
-        self.env_config: FlatlandEnvConfig = env_config
+        self.env_config: BaseEnvConfig = env_config
         self.env_type: str = getattr(self.env_config, 'env_type', 'flatland')
         self._init_env()
         self.controller_config: ControllerConfig = controller_config

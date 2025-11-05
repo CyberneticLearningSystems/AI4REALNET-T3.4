@@ -3,7 +3,7 @@ import sys
 import random
 import argparse
 import numpy as np
-from typing import Dict
+from typing import Any, Dict, Union
 
 import torch
 import torch.multiprocessing as mp
@@ -15,13 +15,12 @@ if src_path not in sys.path:
 
 from src.utils.file_utils import load_config_file
 from src.utils.observation.obs_utils import calculate_state_size
-
-from src.configs.EnvConfig import create_env_config
+from src.configs.EnvConfig import _resolve_env_config, BaseEnvConfig
 from src.configs.ControllerConfigs import PPOControllerConfig
 from src.algorithms.PPO.PPOLearner import PPOLearner
 
 
-def train_ppo(controller_config: PPOControllerConfig, learner_config: Dict, env_config: Dict, device: str) -> None:
+def train_ppo(controller_config: PPOControllerConfig, learner_config: Dict, env_config: BaseEnvConfig, device: str) -> None:
     learner = PPOLearner(controller_config=controller_config,
                          learner_config=learner_config,
                          env_config=env_config,
@@ -54,7 +53,7 @@ if __name__ == '__main__':
     # prepare environment config
     if args.random_seed:
         config['environment_config']['random_seed'] = args.random_seed
-    env_config = create_env_config(config['environment_config'])
+    env_config = _resolve_env_config(config['environment_config'])
 
     # prepare controller config and setup parallelisation
     learner_config = config['learner_config']

@@ -13,7 +13,16 @@ from gymnasium import spaces
 
 from src.environments.scenario_loader import load_scenario_from_json, get_num_agents
 
-class FlatlandEnvConfig():
+
+
+class BaseEnvConfig():
+    def create_env(self) -> Any:
+        raise NotImplementedError
+
+    def get_num_agents(self) -> int:
+        raise NotImplementedError
+
+class FlatlandEnvConfig(BaseEnvConfig):
     def __init__(self, env_config: Dict[str, Union[int, float]]):
         env_config = dict(env_config)
         env_config.pop('type', None)
@@ -138,7 +147,7 @@ class FlatlandEnvConfig():
         self.reward_config = reward_config
 
 
-class PettingZooEnvConfig:
+class PettingZooEnvConfig(BaseEnvConfig):
     def __init__(self, env_config: Dict[str, Any]):
         env_config = dict(env_config)
         env_config.pop('type', None)
@@ -220,7 +229,7 @@ class PettingZooEnvConfig:
         return self.n_agents
 
 
-class GymEnvConfig:
+class GymEnvConfig(BaseEnvConfig):
     def __init__(self, env_config: Dict[str, Any]):
         env_config = dict(env_config)
         env_config.pop('type', None)
@@ -269,14 +278,21 @@ class GymEnvConfig:
 
     def get_num_agents(self) -> int:
         return 1
+    
 
+ENV_CONFIG_TYPES = {
+    "flatland": FlatlandEnvConfig,
+    "pettingzoo": PettingZooEnvConfig,
+    "gym": GymEnvConfig,
+}
 
-def create_env_config(env_config: Dict[str, Any]):
-    env_type = env_config.get('type', 'flatland').lower()
-    if env_type == 'flatland':
-        return FlatlandEnvConfig(env_config)
-    if env_type == 'pettingzoo':
-        return PettingZooEnvConfig(env_config)
-    if env_type == 'gym':
-        return GymEnvConfig(env_config)
-    raise ValueError(f"Unknown environment configuration type '{env_type}'.")
+def _resolve_env_config(env_config: BaseEnvConfig) -> BaseEnvConfig:
+    if isinstance(env_config, BaseEnvConfig):
+        return env_config
+
+    env_type = env_config.get("type", "flatland").lower()
+    try:
+        config_cls = ENV_CONFIG_TYPES[env_type]
+    except KeyError as exc:
+        raise ValueError(f"Unknown environment configuration type '{env_type}'.") from exc
+    return config_cls(env_config)
