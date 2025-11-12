@@ -87,7 +87,10 @@ class PPOLearner():
 
 
     def _init_normalisation(self) -> None:
-        """ Normalisation setup """
+        """ 
+        Normalisation setup 
+        # TODO: make this generic for other environment types (needs a NormalisationConfig class)
+        """
         self.flatland_normalisation: FlatlandNormalisation = FlatlandNormalisation(
             n_nodes=self.controller.config['n_nodes'],
             n_features=self.controller.config['n_features'],
@@ -108,7 +111,6 @@ class PPOLearner():
         interrupted = False
 
         try:
-            # TODO: gather rollouts and update when enough data is collected
             while self.completed_updates < self.target_updates:
                 # gather rollouts
                 log_info = self.gather_rollouts()
@@ -335,7 +337,6 @@ class PPOLearner():
 
 
     def _gaes(self) -> Tuple[float, float]:
-        # TODO: normalise GAEs
         for idx, episode in enumerate(self.rollout.episodes):
             self.rollout.episodes[idx]['gaes'] = [[] for _ in range(self.env_config.n_agents)]
             for agent in range(len(episode['states'])):
