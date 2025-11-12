@@ -3,7 +3,7 @@
     "configurations": [
         {
             "name": "PPO Synchronous",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/run/sync_ppo.py",
             "console": "integratedTerminal",
@@ -13,7 +13,7 @@
         },
         {
             "name": "PPO",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/run/ppo.py",
             "console": "integratedTerminal",
