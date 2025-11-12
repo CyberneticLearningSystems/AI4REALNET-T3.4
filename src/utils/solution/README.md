@@ -1,5 +1,5 @@
 # Solution Utils
-The funcitons in this package serve to support the translation of atomic actions in flatland to human-readable solutions
+The functions in this package serve to support the translation of atomic actions in flatland to human-readable solutions
 
 ## Solution Translation
 The ``SolutionTranslator`` encodes and decodes solutions, essentially serving as the intersection between the artificial agents and the human agents. Two core functions are considered: 
