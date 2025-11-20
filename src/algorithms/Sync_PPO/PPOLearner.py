@@ -51,9 +51,6 @@ class PPOLearner():
         self.controller_config = config
         self.n_nodes: int = config.config_dict['n_nodes']
         self.state_size: int = config.config_dict['state_size']
-        self.entropy_coeff: float = config.config_dict['entropy_coefficient']
-        self.value_loss_coeff: float = config.config_dict['value_loss_coefficient']
-        self.gamma: float = config.config_dict['gamma']
         self.controller: ControllerConfig = config.create_controller()
 
     def _init_learning_params(self, learner_config: Dict) -> None:
