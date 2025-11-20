@@ -101,9 +101,9 @@ def get_waypoints(agent_positions, agent_targets, agent_directions):
     agent_waypoints = {i: [] for i in range(len(agent_positions))}
     for agent, wpts in enumerate(agent_positions):
         for idx, wpt in enumerate(wpts):
-            agent_waypoints[agent].append([Waypoint(position=tuple(wpt), direction=agent_directions[agent][idx])])
+            agent_waypoints[agent].append([Waypoint(position=tuple(wpt), direction=agent_directions[agent][idx][0])])
     for agent, wpt in enumerate(agent_targets):
-        agent_waypoints[agent].append([Waypoint(position=tuple(wpt), direction=agent_directions[agent][-1])])
+        agent_waypoints[agent].append([Waypoint(position=tuple(wpt), direction=agent_directions[agent][-1][0])])
     return agent_waypoints
 
 
