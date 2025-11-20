@@ -51,7 +51,7 @@ class MultiAgentRolloutBuffer:
         }
 
 
-    def add_transitions(self, states: Tensor, actions: Dict[Union[int, str], int], log_probs: Tensor, 
+    def add_transitions(self, states: Tensor, actions: Tensor, log_probs: Tensor, 
                         rewards: Dict[Union[int, str], float], next_states: Tensor, dones: Dict[Union[int, str], bool],
                         state_values: Tensor, next_state_values: Tensor, extras: Dict[str, Tensor]) -> None:
         """
@@ -67,6 +67,7 @@ class MultiAgentRolloutBuffer:
             - state_values: Tensor (n_agents, 1)
             - next_state_values: Tensor (n_agents, 1)
         """
+        # TODO: fix agent handles to work with dynamic number of agents
         for agent_handle in range(len(actions)):
             # add standard transition values
             self.current_episode['states'][agent_handle].append(states[agent_handle])

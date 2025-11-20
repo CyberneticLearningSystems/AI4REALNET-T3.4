@@ -4,6 +4,8 @@ Repository for experimental development of fully autonomous AI for the AI4REALNE
 ## Installation
 These packages were developed with python 3.10.11 For package versions see the ``requirements.txt``. In the .vscode folder, a ``launch.json`` and ``settings.json`` are available to run the different models and perform unittesting.
 
+# TODO: explain the running 
+
 ## Communication Baselines
 Currently the repository contains the following baseline models upon which further development should be done: 
 
