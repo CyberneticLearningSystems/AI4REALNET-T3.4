@@ -130,6 +130,7 @@ class RailroadSwitchAnalyser:
 
         return agent_at_railroad_switch, agent_near_to_railroad_switch, \
                agent_at_railroad_switch_cell, agent_near_to_railroad_switch_cell
+    # TODO: figure out what this does 
 
     def get_rail_env(self) -> RailEnv:
         return self.env
