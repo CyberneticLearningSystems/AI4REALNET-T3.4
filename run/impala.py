@@ -32,11 +32,14 @@ def train_impala(controller_config: PPOControllerConfig, learner_config: Dict, e
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a PPO agent')
     parser.add_argument('--config_path', type=str, default='src/configs/IMPALA_LSTM.yaml', help='Path to the configuration file')
+    parser.add_argument('--wandb_project', type=str, default='AI4REALNET-T3.4', help='Weights & Biases project name for logging')
+    parser.add_argument('--wandb_entity', type=str, default='CLS-FHNW', help='Weights & Biases entity name for logging')
     parser.add_argument('--controller_type', type=str, default='lstm', help='type of controller')
     parser.add_argument('--random_seed', type=int, default=None, help='Random seed for reproducibility')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the training on (cpu or cuda)')
     parser.add_argument('--n_workers', type=int, default=5, help='Number of parallel workers for training')
     args = parser.parse_args()
+    # TODO: move n_workers and controller type to config file (see sync_ppo.py and ppo.py)
 
 
     # Load config file
@@ -53,6 +56,8 @@ if __name__ == '__main__':
         # If no device is specified, use all available CPU cores
         args.n_workers = mp.cpu_count()
     learner_config['n_workers'] = args.n_workers
+    learner_config['wandb_project'] = args.wandb_project
+    learner_config['wandb_entity'] = args.wandb_entity
 
     # prepare controller
     config['controller_config']['n_nodes'], config['controller_config']['state_size'] = calculate_state_size(env_config.observation_builder_config['max_depth'])

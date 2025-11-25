@@ -30,6 +30,8 @@ def train_ppo(controller_config: PPOControllerConfig, learner_config: Dict, env_
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a PPO agent')
     parser.add_argument('--config_path', type=str, default='src/configs/PPO_FNN.yaml', help='Path to the configuration file')
+    parser.add_argument('--wandb_project', type=str, default='AI4REALNET-T3.4', help='Weights & Biases project name for logging')
+    parser.add_argument('--wandb_entity', type=str, default='CLS-FHNW', help='Weights & Biases entity name for logging')
     parser.add_argument('--random_seed', type=int, default=None, help='Random seed for reproducibility')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the training on (cpu or cuda)')
     args = parser.parse_args()
@@ -45,6 +47,8 @@ if __name__ == '__main__':
 
     # prepare controller config and setup parallelisation
     learner_config = config['learner_config']
+    learner_config['wandb_project'] = args.wandb_project
+    learner_config['wandb_entity'] = args.wandb_entity
 
     # prepare controller
     controller_config_dict = config['controller_config']
