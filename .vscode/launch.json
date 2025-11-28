@@ -31,5 +31,15 @@
                 "--config_path", "src/configs/PPO_FNN.yaml"
             ]
         },
+        {
+            "name": "Minimal PPO",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/algorithms/BasePPO/BasePPO.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--config_path", "src/configs/PPO_FNN.yaml"
+            ]
+        },
     ]
 }
