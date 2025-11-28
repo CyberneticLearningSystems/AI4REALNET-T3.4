@@ -337,22 +337,39 @@ class PPOLearner():
 
 
     def _gaes(self) -> Tuple[float, float]:
+        # for each episode in the rollout buffer
         for idx, episode in enumerate(self.rollout.episodes):
+
+            # create a gaes entry for each agent
             self.rollout.episodes[idx]['gaes'] = [[] for _ in range(self.env_config.n_agents)]
+
+            # for each agent in the episode
             for agent in range(len(episode['states'])):
-                state_values = torch.stack(episode['state_values'][agent]).detach()
-                next_state_values = torch.stack(episode['next_state_values'][agent]).detach()
+                traj_len = len(episode['states'][agent])
+                state_values = torch.stack(episode['state_values'][agent])
+                next_state_values = torch.stack(episode['next_state_values'][agent])
 
                 rewards = torch.tensor(episode['rewards'][agent])
                 dones = torch.tensor(episode['dones'][agent]).float()
-                traj_len = len(rewards)
 
-                gaes = [torch.tensor(0.0) for _ in range(len(rewards))]
-                advantage = 0.0
-                for t in reversed(range(len(rewards))):
-                    delta = rewards[t] + self.gamma * next_state_values[t] * (1 - dones[t]) - state_values[t]
-                    advantage = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * advantage
-                    gaes[t] = advantage
+                gaes = [torch.tensor(0.0) for _ in range(traj_len)]
+                gae = 0.0
+                terminal = 0
+                for t in reversed(range(traj_len)):
+                    if t == traj_len - 1:
+                        next_non_terminal = 0
+                        next_state_value = 0.0
+                    else:
+                        if dones[t]:
+                            next_non_terminal = 0
+                        else:
+                            next_non_terminal = 1
+                        next_state_value = next_state_values[t] * next_non_terminal
+
+
+                    delta = rewards[t] + self.gamma * next_state_value - state_values[t]
+                    gae = delta + self.gamma * self.gae_lambda * next_non_terminal * gae
+                    gaes[t] = gae
 
                 gae_tensor = torch.stack(gaes)
                 self.rollout.episodes[idx]['gaes'][agent] = gae_tensor
