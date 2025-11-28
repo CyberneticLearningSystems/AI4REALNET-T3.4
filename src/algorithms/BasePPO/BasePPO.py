@@ -7,8 +7,18 @@ Date last modified:     24/11/2025
 Python Version:         3.10.11
 '''
 import os
-from typing import Dict, Any, Tuple
+import sys
+from pathlib import Path
+from typing import Dict, Any, Tuple, List
 from argparse import ArgumentParser
+
+# Add project root to Python path
+project_root = Path(__file__).resolve().parents[3]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+import numpy as np
+import wandb
 
 # torch imports
 import torch
@@ -63,7 +73,7 @@ class BasePPO():
 
         # setup normalisation
         self.normalisation = FlatlandNormalisation(n_nodes=self.n_nodes, 
-                                                   state_size=self.state_size,
+                                                   n_features=int(self.state_size/self.n_nodes),
                                                    n_agents=self.flatland_environment.get_num_agents(),
                                                    env_size=(self.flatland_environment.width, self.flatland_environment.height)
                                                    )
@@ -76,14 +86,22 @@ class BasePPO():
         self.samples_per_update = LEARNING_PARAMS['samples_per_update']
         self.sgd_batch_size = LEARNING_PARAMS['sgd_batch_size']
         self.lam = LEARNING_PARAMS['lambda']
+        self.value_loss_coef = LEARNING_PARAMS['value_loss_coef']
+        self.entropy_coef = LEARNING_PARAMS['entropy_coef']
+
 
         # initialise optimiser
         self.optimizer = torch.optim.Adam(self.controller.parameters(), lr=self.learning_rate)
 
+        # setup weights and biases
+        wandb.init(project='Minimal_PPO', entity='CLS-FHNW', config=LEARNING_PARAMS, reinit=True)
+        wandb.run.define_metric('episodes/*', step_metric='episode')
+        wandb.run.define_metric('train/*', step_metric='epoch')
+        wandb.run.name = RUN_NAME
 
-    def setup_environment(self, observation_type: str = 'tree', max_tree_depth: int = 2, malfunctions: bool = False) -> RailEnv:
+
+    def setup_environment(self, max_tree_depth: int = 2, malfunctions: bool = False) -> RailEnv:
         """ Setup a small Flatland RailEnv environment. - copied from src/environments/env_small.py """
-
         # creates a tree observation generator 
         self.observation_builder: TreeObsForRailEnv = TreeObsForRailEnv(max_depth=max_tree_depth, predictor=ShortestPathPredictorForRailEnv())
 
@@ -121,38 +139,151 @@ class BasePPO():
                     obs_builder_object=self.observation_builder
                     )
 
+    # MAIN TRAINING LOOP
     def train(self):
         completed_updates = 0
+        update_steps = 0
         # until we have completed the required number of SGD updates
 
         # TODO: simplify this to one update per episode --> sample size will likely be far too small.
         while completed_updates < self.sgd_updates:
             # set rollout buffer
-            rollout_buffer = RolloutBuffer(state_size=self.state_size, n_agents=self.flatland_environment.get_num_agents())
+            self.rollout_buffer = RolloutBuffer(state_size=self.state_size, n_agents=self.flatland_environment.get_num_agents())
 
-            # gather rollouts
-            if rollout_buffer.episode_steps < self.samples_per_update:
-                obs_dict, infos = self.flatland_environment.reset()
-                # get observations from environment and convert to tensor
-                obs_tensor = obs_dict_to_tensor(obs_dict, self.flatland_environment.get_num_agents(), self.state_size)
-                # normalise observations
-                norm_obs = self.normalisation.normalise(obs_tensor)
+            # reset episode
+            episode_steps = 0
+            current_state_dict, _ = self.flatland_environment.reset()
+            current_state_tensor = obs_dict_to_tensor(observation=current_state_dict,
+                                                      obs_type='tree',
+                                                      n_agents=self.flatland_environment.get_num_agents(), 
+                                                      max_depth=self.observation_builder.max_depth,
+                                                      n_nodes=self.n_nodes)
+            # normalise expects a tensor of shape (batch_size, n_agents, state_size)
+            current_state_tensor = self.normalisation.normalise(current_state_tensor.unsqueeze(0)).squeeze(0)
 
+            while True: 
+                episode_steps += 1
+                # sample actions and calculate state values
+                log_probs, state_values = self.controller(current_state_tensor)
+                actions_tensor = torch.argmax(log_probs, dim=1) # (n_agents, 1) #! this is selecting, not sampling!!!
+                actions_dict = {i: int(actions_tensor[i]) for i in range(actions_tensor.shape[0])}
 
-    def value_loss(self, predictions, targets):
-        """ Simple MSE value loss function, copied from src/algorithms/loss.py "value_loss" function """
-        return F.mse_loss(predictions, targets)
+                # step environment
+                next_state_dict, rewards_dict, dones_dict, _ = self.flatland_environment.step(actions_dict)
+                next_state_tensor = obs_dict_to_tensor(observation=next_state_dict,
+                                                      obs_type='tree',
+                                                      n_agents=self.flatland_environment.get_num_agents(), 
+                                                      max_depth=self.observation_builder.max_depth,
+                                                      n_nodes=self.n_nodes)
+                next_state_tensor = self.normalisation.normalise(next_state_tensor.unsqueeze(0)).squeeze(0)
+                next_state_values = self.controller(next_state_tensor)[1]  # (n_agents, 1)
+
+                # convert rewards and dones to tensors
+                rewards_tensor = torch.tensor([rewards_dict[i] for i in range(self.flatland_environment.get_num_agents())]).unsqueeze(1)  # (n_agents, 1)
+                dones_tensor = torch.tensor([dones_dict[i] for i in range(self.flatland_environment.get_num_agents())]).unsqueeze(1).float()  # (n_agents, 1)
+
+                # add transition to rollout buffer
+                #! debugging print
+                print(f'current_state_tensor shape: {current_state_tensor.shape},\n actions_tensor shape: {actions_tensor.shape},\n log_probs shape: {log_probs.shape},\n rewards_tensor shape: {rewards_tensor.shape},\n next_state_tensor shape: {next_state_tensor.shape},\n dones_tensor shape: {dones_tensor.shape}')
+                self.rollout_buffer.add_transition(states=current_state_tensor, 
+                                                   state_values=state_values, 
+                                                   next_state_values=next_state_values, 
+                                                   actions=actions_tensor, 
+                                                   log_probs=log_probs, 
+                                                   rewards=rewards_tensor, 
+                                                   dones=dones_tensor)
+
+                if all(dones_dict.values()):
+                    agent_rewards = self.rollout_buffer.rewards.sum(dim=0) # sum over time steps, new shape (n_agents, 1)
+                    print(f'Agent rewards: {agent_rewards}')
+                    average_agent_reward = agent_rewards.mean().item()
+                    wandb.log({'episode': completed_updates,
+                    'episode/total_reward': agent_rewards.sum().item(),
+                    'episode/average_reward': average_agent_reward,
+                    'episode/episode_length': episode_steps,
+                    'episode/completion': sum([dones_dict[agent] for agent in range(self.n_agents)]) / self.n_agents})
+                    break
+            
+            # perform learning update
+            losses = {
+                'policy_loss': [],
+                'value_loss': [],
+                'total_loss': []
+            }
+
+            for iteration in range(self.sgd_updates):
+                #! no minibatching because we're only using one episode
+                gaes, value_targets = self.advantages_targets(state_values=self.rollout_buffer.state_values,
+                                                        next_state_values=self.rollout_buffer.next_state_values,
+                                                        rewards=self.rollout_buffer.rewards,
+                                                        dones=self.rollout_buffer.dones
+                                                        )
+                value_targets = value_targets.view(-1, 1)
+                self.rollout_buffer.stack_trajectories()
+
+                # evaluate log probs and state values for all states and actions in the buffer with current controller
+                new_log_probs, entropy, new_state_values = self.controller.evaluate(self.rollout_buffer.states.view(-1, self.state_size), self.rollout_buffer.actions.view(-1, 1))
+
+                # calculate losses
+                policy_loss = self.policy_loss(new_log_probs, self.rollout_buffer.log_probs)
+                value_loss = self.value_loss(new_state_values, value_targets)
+                total_loss: Tensor = policy_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy
+
+                # backpropagate losses
+                self.optimizer.zero_grad()
+                total_loss.backward()
+                self.optimizer.step()
+
+                # accumulate losses for logging
+                losses['policy_loss'].append(policy_loss.item())
+                losses['value_loss'].append(value_loss.item())
+                losses['total_loss'].append(total_loss.item())
+
+                # weights and biases logging
+                wandb.log({
+                'epoch': update_steps,
+                'train/policy_loss': np.mean(losses['policy_loss']),
+                'train/value_loss': np.mean(losses['value_loss']),
+                'train/total_loss': np.mean(losses['total_loss']),
+                # 'train/raw_gae_mean': self.rollout_buffer.gae.mean().item(),
+                # 'train/raw_gae_std': self.rollout_buffer.gae.std().item(),
+                'train/mean_entropy': entropy.mean().item()
+                })
+                update_steps += 1
+            completed_updates += 1
+            
+
+    # LOSS FUNCTIONS
+    def value_loss(self, new_state_values: Tensor, value_targets: Tensor) -> Tensor:
+        """ 
+        Simple MSE value loss function, copied from src/algorithms/loss.py "value_loss" function 
+
+        Parameters:
+            - new_state_values: Tensor of shape (episode_length * n_agents, 1)
+            - targets: Tensor of shape (episode_length * n_agents, 1)
+        """
+        return F.mse_loss(new_state_values, value_targets)
     
-    def policy_loss(self, gae, new_log_prob, old_log_prob):
-        """ PPO clipped policy loss function, copied from src/algorithms/loss.py "policy_loss" function """
+
+    def policy_loss(self, new_log_prob, old_log_prob):
+        """ 
+        PPO clipped policy loss function, copied from src/algorithms/loss.py "policy_loss" function 
+
+        Parameters:
+            - new_log_prob: Tensor of shape (episode_length, n_agents, 1)
+            - old_log_prob: Tensor of shape (episode_length, n_agents, 1)
+        """
+        # TODO: check dimensions
         unclipped_ratio: Tensor = torch.exp(new_log_prob - old_log_prob)
         clipped_ratio: Tensor = torch.clamp(unclipped_ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon)
-        actor_loss: Tensor = -torch.min(clipped_ratio * gae, unclipped_ratio * gae).mean()
+        actor_loss: Tensor = -torch.min(clipped_ratio * self.rollout_buffer.gaes, unclipped_ratio * self.rollout_buffer.gaes).mean()
         return actor_loss
+    
 
-    def gaes(self, states: Tensor, next_states: Tensor, rewards: Tensor, dones: Tensor) -> Tensor:
+    # GENERALISED ADVANTAGE CALCULATION
+    def advantages_targets(self, state_values: Tensor, next_state_values: Tensor, rewards: Tensor, dones: Tensor) -> Tuple[Tensor, Tensor]:
         """ 
-        Calculate Generalized Advantage Estimates (GAE) -> weighted sum of temporal differences, standard for PPO
+        Calculate Generalized Advantage Estimates (GAE) and the value targets -> weighted sum of temporal differences, standard for PPO
         Paper: https://arxiv.org/abs/1506.02438
 
         The temporal difference residuals are calculated as: 
@@ -167,17 +298,36 @@ class BasePPO():
 
         Outputs a tensor of shape (episode_length, n_agents, 1)
         """
+        value_targets = torch.zeros_like(rewards)  # (batchsize, n_agents, 1)
         gaes = torch.zeros_like(rewards)  # (batchsize, n_agents, 1)
-        for episode_step in range(rewards.shape[0]):  # iterate over episodes in batch
-            for agent_index in range(rewards.shape[1]):  # iterate over agents
-                # calculate GAE over the whole episode recursively
-                _, state_values = self.controller(states[episode_step, agent_index, :])
-                advantage = 0.0
-                for t in reversed(range(rewards.shape[2])):  # iterate backwards over time steps
-                    delta = rewards[episode_step, agent_index, t] + self.gamma * next_states[episode_step, agent_index, t] * (1 - dones[episode_step, agent_index, t]) - state_values[t]
-                    advantage = delta + self.gamma * self.lam * (1- dones[episode_step, agent_index, t]) * advantage
-                    gaes[episode_step, agent_index, t] = advantage
-        return gaes
+
+        for agent_index in range(rewards.shape[1]):  # iterate over agents
+            gae = 0.0
+            length = rewards.shape[0]
+
+            for t in reversed(range(length)):  # iterate backwards over time steps
+                if t == length - 1:
+                    next_non_terminal = 0.0
+                    next_state_value = 0.0 # we don't know the next state, this is a bootstrap
+                else: 
+                    if dones[t, agent_index]: 
+                        next_non_terminal = 0.0
+                    else: 
+                        next_non_terminal = 1.0
+
+                    next_state_value = next_state_values[t, agent_index] * next_non_terminal
+
+                # TD error
+                delta = rewards[t, agent_index] + self.gamma * next_state_value - state_values[t, agent_index]
+
+                # GAE recursive calculation
+                gae = delta + self.gamma * self.lam * next_non_terminal * gae
+
+                # fill into tensors
+                gaes[t, agent_index] = gae
+                value_targets[t, agent_index] = gae + state_values[t, agent_index]
+
+        return gaes, value_targets
 
 
     def save_model(self) -> None:
@@ -200,37 +350,47 @@ class RolloutBuffer():
         
         # Initialise empty tensors for each component of the buffer
         #! This structure doesn't allow for episodes of varying lengths 
-        self.state: torch.Tensor = torch.Tensor(size=(0, n_agents, state_size))
-        self.next_state: torch.Tensor = torch.Tensor(size=(0, n_agents, state_size))
-        self.action: torch.Tensor = torch.Tensor(size=(0, n_agents, 1))
-        self.log_prob: torch.Tensor = torch.Tensor(size=(0, n_agents, 1))
-        self.reward: torch.Tensor = torch.Tensor(size=(0, n_agents, 1))
-        self.done: torch.Tensor = torch.Tensor(size=(0, n_agents, 1))
+        self.states: List[Tensor]= []
+        self.state_values: List[Tensor]= []
+        self.next_state_values: List[Tensor]= []
+        self.actions: List[Tensor]= []
+        self.log_probs: List[Tensor]= []
+        self.rewards: List[Tensor]= []
+        self.dones: List[Tensor]= []
+        self.gaes: List[Tensor]= []
 
-    def add_transition(self, state: Tensor, action: Tensor, log_prob: Tensor, reward: Tensor, next_state: Tensor, done: Tensor) -> None:
+    def add_transition(self, states: Tensor, state_values: Tensor, next_state_values: Tensor, actions: Tensor, log_probs: Tensor, rewards: Tensor, dones: Tensor) -> None:
         """ 
         Add a new transition to the buffer. 
             - Values come in the shape (n_agents, feature_size) and are resizes to (1, n_agents, feature_size) before concatenation at dimension 0
         """
-        self.state = torch.cat((self.state, state.unsqueeze(0)), dim=0)
-        self.action = torch.cat((self.action, action.unsqueeze(0)), dim=0)
-        self.log_prob = torch.cat((self.log_prob, log_prob.unsqueeze(0)), dim=0)
-        self.reward = torch.cat((self.reward, reward.unsqueeze(0)), dim=0)
-        self.next_state = torch.cat((self.next_state, next_state.unsqueeze(0)), dim=0)
-        self.done = torch.cat((self.done, done.unsqueeze(0)), dim=0)
+        self.states.append(states.unsqueeze(0))
+        self.state_values.append(state_values.unsqueeze(0))
+        self.next_state_values.append(next_state_values.unsqueeze(0))
+        self.actions.append(actions.unsqueeze(0))
+        self.log_probs.append(log_probs.unsqueeze(0))
+        self.rewards.append(rewards.unsqueeze(0))
+        self.dones.append(dones.unsqueeze(0))
         self.episode_steps += 1
 
     def add_gaes(self, gaes: Tensor) -> None:
         """ 
         Add the calculated GAEs to the buffer. Expects size (episode_steps, n_agents, 1).
         """
-        self.gae = gaes
+        self.gae: Tensor = gaes
 
-    def stack_episodes(self) -> None:
+    def stack_trajectories(self) -> None:
         """ 
         Stack all episodes in the buffer into a single tensor for each component.
         """
-        pass
+        self.states = torch.stack(self.states)  # (episode_steps, n_agents, state_size)
+        self.state_values = torch.stack(self.state_values)  # (episode_steps, n_agents, 1)
+        self.next_state_values = torch.stack(self.next_state_values)  # (episode_steps, n_agents, 1)
+        self.actions = torch.stack(self.actions)  # (episode_steps, n_agents, 1)
+        self.log_probs = torch.stack(self.log_probs)  # (episode_steps, n_agents, 1)
+        self.rewards = torch.stack(self.rewards)  # (episode_steps, n_agents, 1)
+        self.dones = torch.stack(self.dones)  # (episode_steps, n_agents, 1)
+        self.gaes = self.gae.view(-1, 1)  # (episode_steps * n_agents, 1)
 
 
 class ControllerNetwork(nn.Module):
@@ -257,12 +417,37 @@ class ControllerNetwork(nn.Module):
             nn.Linear(in_features=encoder_output_size, out_features= 1)
         )
 
+
     def forward(self, state: Tensor) -> Tuple[Tensor, Tensor]:
         """ Forward pass through the network. """
         encoded_state = self.encoder_network(state)
         action_logits = self.actor_network(encoded_state)
         state_value = self.critic_network(encoded_state)
+        log_probs = F.log_softmax(action_logits, dim=-1)
         return action_logits, state_value
+        
+
+    def evaluate(self, states: Tensor, actions: Tensor) -> Tuple[Tensor, Tensor]:
+        """ 
+        Evaluate the log probabilities and state values for given states and actions. Copied from src/algorithms/PPO/PPOLearner.py "_evaluate" function lines 392-404
+        
+        Parameters:
+            - states: Tensor of shape (n_agents, state_size)
+            - actions: Tensor of shape (n_agents, 1)
+
+        Returns:
+            - log_prob: Tensor of shape (n_agents, 1)
+            - state_values: Tensor of shape (n_agents, 1)
+        """
+        encoded_states = self.encoder_network(states) # (n_agents, encoder_output_size)
+        action_logits = self.actor_network(encoded_states) # (n_agents, action_size)
+        state_values = self.critic_network(encoded_states) # (n_agents, 1)
+
+        action_distribution = torch.distributions.Categorical(logits=action_logits)
+        entropy = action_distribution.entropy().mean() # (1,)
+        log_probs = action_distribution.log_prob(actions)  # (batch_size, 1)
+
+        return log_probs, entropy, state_values
 
 
 if __name__ == "__main__":
