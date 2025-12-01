@@ -24,8 +24,10 @@ The graph contains the following network information in the form of node and edg
     - ``resources``: list of cells in the edge and including their travel direction, forming the tuple ((x,y), travel_direction). The origin and destination cells are not included in the list, only the cells in between the nodes.
     - ``max_speed``: max speed along the edge (WIP)
 
-## PathGenerator
+The ``MultiDiGraphBuilder`` attributes ``rail_clusters`` and ``switch_clusters`` contain ``np.ndarray`` with shape ``env_height x env_width`` that contain the IDs of the rail or switch cluster the cell belongs to, respectively. These arrays can be rendered to visualise the clustering of rails/switches. 
 
+
+## PathGenerator
 ### 2. Shortest Path Calculation 
 Using the `MultiDiGraph` constructed by ``MultiDiGraphBuilder``, paths between the nodes in the graph can be calculated. This function is used to identify the k-shortest paths between each station pair. This is done under the assumption that agents learn in static environments, which represents the real-world, where network topologies do not change significantly over time. 
 
