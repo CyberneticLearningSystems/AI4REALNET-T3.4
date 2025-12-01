@@ -167,7 +167,7 @@ class PPOLearner():
                                                    n_nodes=self.controller.config['n_nodes'])
             
             # reduce to active agents and normalise
-            rewards = [rewards[i] for i in active_list if i]
+            rewards = [rewards[idx] for idx, i in enumerate(active_list) if i]
             next_state_tensor = next_state_tensor[active_list]
             next_state_tensor = self.flatland_normalisation.normalise(next_state_tensor.unsqueeze(0)).squeeze(0).detach()
             next_state_values = self.controller.state_values(next_state_tensor, extras={}).detach()
@@ -353,8 +353,7 @@ class PPOLearner():
                 dones = torch.tensor(episode['dones'][agent]).float()
 
                 gaes = [torch.tensor(0.0) for _ in range(traj_len)]
-                gae = 0.0
-                terminal = 0
+                gae = torch.tensor([0.0])
                 for t in reversed(range(traj_len)):
                     if t == traj_len - 1:
                         next_non_terminal = 0
@@ -371,8 +370,8 @@ class PPOLearner():
                     gae = delta + self.gamma * self.gae_lambda * next_non_terminal * gae
                     gaes[t] = gae
 
-                gae_tensor = torch.stack(gaes)
-                self.rollout.episodes[idx]['gaes'][agent] = gae_tensor
+                gae_tensor = torch.stack(gaes) # (traj_len, 1)
+                self.rollout.episodes[idx]['gaes'][agent] = gae_tensor.squeeze(-1)
 
         return self._normalise_gaes()
 
