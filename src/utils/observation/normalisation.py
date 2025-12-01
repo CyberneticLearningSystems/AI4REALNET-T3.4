@@ -54,7 +54,7 @@ class Normalisation:
 
 class FlatlandNormalisation(Normalisation):
     def __init__(self, n_nodes: int, n_features: int, n_agents: int, env_size: Tuple[int, int], 
-                 eps: float = 1e-8, clip: bool = True, c: float = 5.0) -> None:
+                 eps: float = 1e-8, clip: bool = True, clip_value: float = 5.0) -> None:
         """
         Normalisation for Flatland tree observations, holds a RunningMeanStd instance for each type of observation, as described
         in the Flatland documentation: https://flatland-association.github.io/flatland-book/environment/observation_builder/provided_observations.html
@@ -67,7 +67,7 @@ class FlatlandNormalisation(Normalisation):
             - n_features: Number of features per node in the tree observation
             - eps: Small value to avoid division by zero
         """
-        super().__init__(eps=eps, clip=clip, c=c)
+        super().__init__(eps=eps, clip=clip, clip_value=clip_value)
         self.n_nodes: int = n_nodes
         self.n_features: int = n_features
         self.n_agents: int = n_agents
