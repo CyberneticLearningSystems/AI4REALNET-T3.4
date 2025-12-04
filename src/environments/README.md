@@ -76,3 +76,41 @@ This scenario, as the name indicates, tests how agents initiate overtaking when 
 | 1       | N/A                         | 1.0                          |
 | 7       | 14                          | N/A                          |
 
+
+# Experimental Network Topology 
+For experiment testing with humans, a realistic, but small-scale environment has been developed that consists of 7 stations divided into 2 regions, with two stations corresponding to larger cities with multiple parallel tracks. 
+
+![Simple Avoidance Scenario](./renders/experiment_topology_stations.png)
+
+:warning: this network topology and the corresponding schedule may change in future iterations of the experimental planning.
+
+Three lines exist that are scheduled with different frequencies. Line 1 is the northern regional line, which has a frequency of 5x/hour. Line 2 is the southern regional line, which has a frequency of 3x/hour. Finally, the stations 2 and 5 are connected by line 3, the inter-regional line, which has a frequency of 2x/hour. 
+
+![Simple Avoidance Scenario](./renders/experiment_topology_lines.png)
+
+
+| Station | Latest Arrival Time         | Earliest Departure Time      |
+|---------|-----------------------------|------------------------------|
+| **Northern Regional Line** |
+| 1       | N/A                         | 2.0                          |
+| 2       | 10                          | N/A                          |
+| 3       | 10                          | N/A                          |
+| 4       | 10                          | N/A                          |
+| 3       | 10                          | N/A                          |
+| 2       | 10                          | N/A                          |
+| 1       | 10                          | N/A                          |
+| **Southern Regional Line** |
+| 5       | N/A                         | 2.0                          |
+| 6       | 10                          | N/A                          |
+| 7       | 10                          | N/A                          |
+| 5       | 10                          | N/A                          |
+| **Inter-Regional Line** |
+| 2       | N/A                         | N/A                          |
+| 3       | 10                          | N/A                          |
+| 4       | 10                          | N/A                          |
+| 5       | 10                          | 2.0                          |
+| 6       | 10                          | N/A                          |
+| 1       | 10                          | 2.0                          |
+| 2       | 10                          | N/A                          |
+
+*Times are not filled in yet*
