@@ -81,7 +81,7 @@ class PPOLearner():
         Initialize Weights & Biases for logging.
         """
         self.run_name = learner_config['run_name']
-        wandb.init(project='PPO_PettingZoo_Testing', entity='CLS-FHNW', config=learner_config, reinit=True)
+        wandb.init(project=learner_config['wandb_project'], entity=learner_config['wandb_entity'], config=learner_config, reinit=True)
         wandb.run.define_metric('episodes/*', step_metric='episode')
         wandb.run.define_metric('train/*', step_metric='epoch')
         wandb.run.name = f"{self.run_name}_PPO"
@@ -91,7 +91,10 @@ class PPOLearner():
 
 
     def _init_normalisation(self) -> None:
-        """ Normalisation setup """
+        """ 
+        Normalisation setup 
+        # TODO: make this generic for other environment types (needs a NormalisationConfig class)
+        """
         self.flatland_normalisation: FlatlandNormalisation = FlatlandNormalisation(
             n_nodes=self.controller.config['n_nodes'],
             n_features=self.controller.config['n_features'],
@@ -112,7 +115,6 @@ class PPOLearner():
         interrupted = False
 
         try:
-            # TODO: gather rollouts and update when enough data is collected
             while self.completed_updates < self.target_updates:
                 # gather rollouts
                 log_info = self.gather_rollouts()
@@ -169,7 +171,7 @@ class PPOLearner():
                                                    n_nodes=self.controller.config['n_nodes'])
             
             # reduce to active agents and normalise
-            rewards = [rewards[i] for i in active_list if i]
+            rewards = [rewards[idx] for idx, i in enumerate(active_list) if i]
             next_state_tensor = next_state_tensor[active_list]
             next_state_tensor = self.flatland_normalisation.normalise(next_state_tensor.unsqueeze(0)).squeeze(0).detach()
             next_state_values = self.controller.state_values(next_state_tensor, extras={}).detach()
@@ -339,26 +341,41 @@ class PPOLearner():
 
 
     def _gaes(self) -> Tuple[float, float]:
-        # TODO: normalise GAEs
+        # for each episode in the rollout buffer
         for idx, episode in enumerate(self.rollout.episodes):
+
+            # create a gaes entry for each agent
             self.rollout.episodes[idx]['gaes'] = [[] for _ in range(self.env_config.n_agents)]
+
+            # for each agent in the episode
             for agent in range(len(episode['states'])):
-                state_values = torch.stack(episode['state_values'][agent]).detach()
-                next_state_values = torch.stack(episode['next_state_values'][agent]).detach()
+                traj_len = len(episode['states'][agent])
+                state_values = torch.stack(episode['state_values'][agent])
+                next_state_values = torch.stack(episode['next_state_values'][agent])
 
                 rewards = torch.tensor(episode['rewards'][agent])
                 dones = torch.tensor(episode['dones'][agent]).float()
-                traj_len = len(rewards)
 
-                gaes = [torch.tensor(0.0) for _ in range(len(rewards))]
-                advantage = 0.0
-                for t in reversed(range(len(rewards))):
-                    delta = rewards[t] + self.gamma * next_state_values[t] * (1 - dones[t]) - state_values[t]
-                    advantage = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * advantage
-                    gaes[t] = advantage
+                gaes = [torch.tensor(0.0) for _ in range(traj_len)]
+                gae = torch.tensor([0.0])
+                for t in reversed(range(traj_len)):
+                    if t == traj_len - 1:
+                        next_non_terminal = 0
+                        next_state_value = 0.0
+                    else:
+                        if dones[t]:
+                            next_non_terminal = 0
+                        else:
+                            next_non_terminal = 1
+                        next_state_value = next_state_values[t] * next_non_terminal
 
-                gae_tensor = torch.stack(gaes)
-                self.rollout.episodes[idx]['gaes'][agent] = gae_tensor
+
+                    delta = rewards[t] + self.gamma * next_state_value - state_values[t]
+                    gae = delta + self.gamma * self.gae_lambda * next_non_terminal * gae
+                    gaes[t] = gae
+
+                gae_tensor = torch.stack(gaes) # (traj_len, 1)
+                self.rollout.episodes[idx]['gaes'][agent] = gae_tensor.squeeze(-1)
 
         return self._normalise_gaes()
 

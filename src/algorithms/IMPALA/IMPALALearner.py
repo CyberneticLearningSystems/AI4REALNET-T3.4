@@ -78,7 +78,7 @@ class IMPALALearner():
         """
         Initialize Weights & Biases for logging.
         """
-        wandb.init(project='AI4REALNET-T3.4', entity='CLS-FHNW', config=learner_config, reinit=True)
+        wandb.init(project=learner_config['wandb_project'], entity=learner_config['wandb_entity'], config=learner_config, reinit=True)
         wandb.run.define_metric('episodes/*', step_metric='episode')
         wandb.run.define_metric('train/*', step_metric='update_step')
         wandb.run.name = f"{learner_config['run_name']}_IMPALA"

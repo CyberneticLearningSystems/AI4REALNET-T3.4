@@ -6,7 +6,7 @@ from src.utils.observation.RunningMeanStd import RunningMeanStd
 
 
 class Normalisation:
-    def __init__(self, eps: float = 1e-8, clip: bool = True, c: float = 5.0) -> None:
+    def __init__(self, eps: float = 1e-8, clip: bool = True, clip_value: float = 5.0) -> None:
         """
         Normalisation for single values, holds a RunningMeanStd instance.
 
@@ -20,7 +20,7 @@ class Normalisation:
         self.rms: RunningMeanStd = RunningMeanStd(size=1, eps=eps)
 
         self.clip: bool = clip
-        self.c: float = c
+        self.clip_value: float = clip_value
 
     def update_metrics(self, x: Tensor) -> None:
         """ Update the running mean and variance using a batch of observations and the RunningMeanStd class. """
@@ -29,7 +29,7 @@ class Normalisation:
         self.std = torch.sqrt(self.rms.var + self.eps).item()
         self.count = self.rms.count
         
-    def normalise(self, x: Tensor, clip: bool = None, c: float = None) -> Tensor:
+    def normalise(self, x: Tensor, clip: bool = None, clip_value: float = None) -> Tensor:
         """
         Normalise a batch of observations using the running mean and std.
 
@@ -43,18 +43,18 @@ class Normalisation:
         """
         if clip is not None:
             self.clip = clip
-        if c is not None:
-            self.c = c
+        if clip_value is not None:
+            self.clip_value = clip_value
             
         x_normalised = (x - self.mean) / (self.std + self.eps)
         if self.clip:
-            x_normalised = torch.clamp(x_normalised, -self.c, self.c)
+            x_normalised = torch.clamp(x_normalised, -self.clip_value, self.clip_value)
         return x_normalised
 
 
 class FlatlandNormalisation(Normalisation):
     def __init__(self, n_nodes: int, n_features: int, n_agents: int, env_size: Tuple[int, int], 
-                 eps: float = 1e-8, clip: bool = True, c: float = 5.0) -> None:
+                 eps: float = 1e-8, clip: bool = True, clip_value: float = 5.0) -> None:
         """
         Normalisation for Flatland tree observations, holds a RunningMeanStd instance for each type of observation, as described
         in the Flatland documentation: https://flatland-association.github.io/flatland-book/environment/observation_builder/provided_observations.html
@@ -67,22 +67,22 @@ class FlatlandNormalisation(Normalisation):
             - n_features: Number of features per node in the tree observation
             - eps: Small value to avoid division by zero
         """
-        super().__init__(eps=eps, clip=clip, c=c)
+        super().__init__(eps=eps, clip=clip, clip_value=clip_value)
         self.n_nodes: int = n_nodes
         self.n_features: int = n_features
         self.n_agents: int = n_agents
         self.distance_rms: RunningMeanStd = RunningMeanStd(size=1, eps=eps)
         self.max_distance: int = env_size[0] * env_size[1]  # (width, height)
 
-    def normalise(self, x: Tensor, clip: bool = None, c: float = None) -> Tensor:
+    def normalise(self, x: Tensor, clip: bool = None, clip_value: float = None) -> Tensor:
         """
         Normalise a batch of observations using the running mean and std for distance features, and normalising the number of agents features using the
         total number of agents in the environment. Assumes an 3D input shape of (batch_size, n_agents, n_nodes * n_features).
         """
         if clip is not None:
             self.clip = clip
-        if c is not None:
-            self.c = c
+        if clip_value is not None:
+            self.clip_value = clip_value
 
         batchsize = x.shape[0]
         n_agents = x.shape[1]
@@ -106,7 +106,7 @@ class FlatlandNormalisation(Normalisation):
     #     for i in range(self.n_nodes):
     #         x[:, :, i, :7] = (x[:, :, i, :7] - self.distance_rms.mean) / distance_std
     #         if self.clip:
-    #             x[:, :, i, :7] = torch.clamp(x[:, :, i, :7], -self.c, self.c)
+    #             x[:, :, i, :7] = torch.clamp(x[:, :, i, :7], -self.clip_value, self.clip_value)
     #     return x
 
     def _normalise_agent_counts(self, x: Tensor) -> Tensor:

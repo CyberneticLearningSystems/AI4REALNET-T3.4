@@ -51,9 +51,6 @@ class PPOLearner():
         self.controller_config = config
         self.n_nodes: int = config.config_dict['n_nodes']
         self.state_size: int = config.config_dict['state_size']
-        self.entropy_coeff: float = config.config_dict['entropy_coefficient']
-        self.value_loss_coeff: float = config.config_dict['value_loss_coefficient']
-        self.gamma: float = config.config_dict['gamma']
         self.controller: ControllerConfig = config.create_controller()
 
     def _init_learning_params(self, learner_config: Dict) -> None:
@@ -80,7 +77,7 @@ class PPOLearner():
         Initialize Weights & Biases for logging.
         """
         self.run_name = learner_config['run_name']
-        wandb.init(project='AI4REALNET-T3.4', entity='CLS-FHNW', config=learner_config, reinit=True)
+        wandb.init(project=learner_config['wandb_project'], entity=learner_config['wandb_entity'], config=learner_config, reinit=True)
         wandb.run.define_metric('episodes/*', step_metric='episode')
         wandb.run.define_metric('train/*', step_metric='epoch')
         wandb.run.name = f"{self.run_name}_PPO"

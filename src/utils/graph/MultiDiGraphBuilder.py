@@ -145,7 +145,7 @@ class MultiDiGraphBuilder:
         
         while n_transitions == 2:
             valid_transitions, _ = self._get_valid_transitions(current_position)
-            transitions: Tuple = self.env.rail.get_transitions(*current_position, travel_direction)
+            transitions: Tuple = self.env.rail.get_transitions((current_position, travel_direction))
             n_transitions: int = np.sum(valid_transitions)
 
             if n_transitions == 2: 
@@ -197,7 +197,7 @@ class MultiDiGraphBuilder:
         """
         valid_transitions = [0] * 4 
         for direction in self.from_directions:
-            transitions: List = list(self.env.rail.get_transitions(*position, direction))
+            transitions: List = list(self.env.rail.get_transitions((position, direction)))
             valid_transitions = [a or b for a, b in zip(valid_transitions, transitions)]
         nonzero_transitions = [i for i, val in enumerate(valid_transitions) if val != 0]
         return valid_transitions, nonzero_transitions
