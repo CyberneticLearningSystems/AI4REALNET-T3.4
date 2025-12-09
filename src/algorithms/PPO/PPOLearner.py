@@ -8,6 +8,10 @@ import torch
 from torch import Tensor
 import torch.optim as optim
 
+from flatland.envs.rail_env import RailEnv
+from gymnasium import Env
+from pettingzoo import ParallelEnv
+
 from src.controllers.BaseController import Controller
 from src.controllers.PPOController import PPOController
 from src.controllers.LSTMController import LSTMController
@@ -33,7 +37,7 @@ class PPOLearner():
         # Initialise environment
         self.obs_type: str = self.env_config.observation_builder_config['type']
         self.max_depth: int = self.env_config.observation_builder_config['max_depth']
-        self.env = env_config.create_env()
+        self.env: Union[RailEnv, Env, ParallelEnv] = env_config.create_env()
         self._init_normalisation()
 
         # Initialise the optimiser
