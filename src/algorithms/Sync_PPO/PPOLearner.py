@@ -353,6 +353,8 @@ class PPOLearner():
         # Total loss & optimisation step
         total_loss: Tensor = actor_loss + critic_loss * self.value_loss_coeff + entropy_loss * self.entropy_coeff
 
+        return total_loss, actor_loss, critic_loss
+
 
     def _gaes(self) -> Tuple[float, float]:
         # TODO: normalise GAEs
