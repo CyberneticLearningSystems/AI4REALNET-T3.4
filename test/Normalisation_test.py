@@ -157,8 +157,7 @@ class PPOLearnerNormalisationTest(unittest.TestCase):
         # GOAL: create a rollout with two episodes, two agents, each with the same batch data of length 9
         rollout = MultiAgentRolloutBuffer(n_agents=2)
         
-        rollout.episodes: List[Dict] = [self.episode_dict,
-                                        self.episode_dict]
+        rollout.episodes: List[Dict] = [self.episode_dict.copy() for _ in range(2)]  # create two episodes based on,
         
         for episode in range(2):
             for key in self.value_keys:
@@ -166,10 +165,13 @@ class PPOLearnerNormalisationTest(unittest.TestCase):
                                                   self.batch.clone()]
                 rollout.episodes[episode][key] = [self.batch.clone(),
                                                   self.batch.clone()]
+
+        stacked_gaes = torch.cat([torch.cat(rollout.episodes[episode]['gaes']) for episode in range(2)], dim=0)      
+        self.rollout_mean = stacked_gaes.mean()
+        self.rollout_std = stacked_gaes.std().clamp(min=1e-8)
     
         return rollout
     
-
     def create_transition(self) -> MultiAgentRolloutBuffer:
         rollout = MultiAgentRolloutBuffer(n_agents=2)
         self.rewards = torch.cat([self.batch.clone() for _ in range(4)], dim=0)
@@ -196,8 +198,8 @@ class PPOLearnerNormalisationTest(unittest.TestCase):
         # Result printout for verification
         print(f"\n{'Metric':<20} {'Calculated':<15} {'Target':<15} {'Difference':<15}")
         print("-" * 65)
-        print(f"{'Raw GAE Mean':<20} {raw_gae_mean:<15.5f} {self.batch_average.item():<15.5f} {abs(raw_gae_mean - self.batch_average.item()):<15.5f}")
-        print(f"{'Raw GAE Std':<20} {raw_gae_std:<15.5f} {self.batch_std.item():<15.5f} {abs(raw_gae_std - self.batch_std.item()):<15.5f}")
+        print(f"{'Raw GAE Mean':<20} {raw_gae_mean:<15.5f} {self.rollout_mean.item():<15.5f} {abs(raw_gae_mean - self.rollout_mean.item()):<15.5f}")
+        print(f"{'Raw GAE Std':<20} {raw_gae_std:<15.5f} {self.rollout_std.item():<15.5f} {abs(raw_gae_std - self.rollout_std.item()):<15.5f}")
         print(f"{'GAE Mean':<20} {gae_mean:<15.5f} {0.0:<15.5f} {abs(gae_mean - 0.0):<15.5f}")
         print(f"{'GAE Std':<20} {gae_std:<15.5f} {1.0:<15.5f} {abs(gae_std - 1.0):<15.5f}\n")
 
@@ -208,8 +210,8 @@ class PPOLearnerNormalisationTest(unittest.TestCase):
         
 
         # Assertions
-        self.assertAlmostEqual(raw_gae_mean, self.batch_average.item(), places=3)
-        self.assertAlmostEqual(raw_gae_std, self.batch_std.item(), places=3)
+        self.assertAlmostEqual(raw_gae_mean, self.rollout_mean.item(), places=3)
+        self.assertAlmostEqual(raw_gae_std, self.rollout_std.item(), places=3)
         self.assertAlmostEqual(gae_mean, 0.0, places=3)
         self.assertAlmostEqual(gae_std, 1.0, places=3)
 
