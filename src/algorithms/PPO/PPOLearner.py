@@ -26,8 +26,8 @@ from src.utils.observation.normalisation import FlatlandNormalisation
 class PPOLearner():
     """
     Learner class for the PPO Algorithm.
-    # TODO: Check for compatibility with Gym and PettingZoo environments
     """
+    # TODO: Check for compatibility with Gym and PettingZoo environments
     def __init__(self, controller_config: ControllerConfig, learner_config: Dict, env_config: BaseEnvConfig, device: str = None) -> None:
         # Initialise environment and set controller / learning parameters
         self.env_config = env_config
@@ -46,7 +46,8 @@ class PPOLearner():
         self.total_episodes: int = 0
 
         # Initialise wandb for logging
-        self._init_wandb(learner_config)
+        if learner_config.get('use_wandb', True): # this can optionally be set to false for testing (otherwise it is not an element of learner_config)
+            self._init_wandb(learner_config)
 
 
     def _init_controller(self, config: ControllerConfig) -> None:
@@ -375,14 +376,15 @@ class PPOLearner():
                     gaes[t] = gae
 
                 gae_tensor = torch.stack(gaes) # (traj_len, 1)
-                self.rollout.episodes[idx]['gaes'][agent] = gae_tensor.squeeze(-1)
+                self.rollout.episodes[idx]['gaes'][agent] = gae_tensor.squeeze(-1) # (traj_len)
 
         return self._normalise_gaes()
 
     
-    def _normalise_gaes(self) -> Tuple[float, float]:
+    def _normalise_gaes(self) -> Tuple[float, float, float, float]:
         n_episodes = len(self.rollout.episodes)
 
+        # new size: (n_episodes * n_agents * traj_len, 1)
         stacked_gaes = torch.cat([torch.cat(self.rollout.episodes[episode]['gaes']) for episode in range(n_episodes)], dim=0)
 
         raw_gae_mean = stacked_gaes.mean()
