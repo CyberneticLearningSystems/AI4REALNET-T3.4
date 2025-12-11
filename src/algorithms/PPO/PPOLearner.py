@@ -382,6 +382,19 @@ class PPOLearner():
 
     
     def _normalise_gaes(self) -> Tuple[float, float, float, float]:
+        """
+        Normalises the GAEs across the whole batch (all episodes and agents in the rollout buffer). For logging purposes, the mean and standard deviation of the batch before and after normalisation are returned. After normalisation, mean 0 and std 1 are expected.
+
+        Parameters:
+            None
+        
+        Returns:
+            raw_gae_mean (float): Mean of the raw GAEs before normalisation.
+            raw_gae_std (float): Standard deviation of the raw GAEs before normalisation.
+            gae_mean (float): Mean of the normalised GAEs.
+            gae_std (float): Standard deviation of the normalised GAEs.
+        """
+
         n_episodes = len(self.rollout.episodes)
 
         # new size: (n_episodes * n_agents * traj_len, 1)
