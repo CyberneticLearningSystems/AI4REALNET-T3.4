@@ -1,4 +1,5 @@
 import os
+import json
 import wandb
 import numpy as np
 from itertools import chain
@@ -136,8 +137,6 @@ class PPOLearner():
             print(f'\nError received: {e}. Saving current model parameters before shutting down.\n')
         finally:
             wandb.finish()
-            if interrupted:
-                self._save_model()
             self._save_model()
 
     
@@ -212,7 +211,8 @@ class PPOLearner():
         torch.save(self.controller.actor_network.state_dict(), os.path.join(savepath, 'actor.pth'))
         torch.save(self.controller.critic_network.state_dict(), os.path.join(savepath, 'critic.pth'))
         torch.save(self.controller.encoder_network.state_dict(), os.path.join(savepath, 'encoder.pth'))
-        print(f'Model parameters saved to {savepath}')
+        json.dump(self.controller_config.config_dict, open(os.path.join(savepath, 'controller_config.json'), 'w'))
+        print(f'Model parameters and configuration saved to {savepath}')
 
 
     def _build_optimiser(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
