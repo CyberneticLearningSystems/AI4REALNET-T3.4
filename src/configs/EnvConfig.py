@@ -28,10 +28,16 @@ class FlatlandEnvConfig(BaseEnvConfig):
     def __init__(self, env_config: Dict[str, Union[int, float]]):
         env_config = dict(env_config)
         env_config.pop('type', None)
+
+        # create observation builder
+        self.observation_builder_config: Dict = env_config['observation_builder_config']
+
+        # Extract scenario name and set scenario = True
         if 'scenario_name' in env_config:
             self.scenario_name: str = env_config['scenario_name']
-            self.observation_builder_config: Dict = env_config['observation_builder_config']
             self.scenario: bool = True
+
+        # Extract environment parameters if no scenario is provided
         else:
             self.scenario: bool = False
             self.height: int = env_config['height']
@@ -41,7 +47,6 @@ class FlatlandEnvConfig(BaseEnvConfig):
             self.grid_distribution: bool = env_config['grid_distribution']
             self.max_rails_between_cities: int = env_config['max_rails_between_cities']
             self.max_rail_pairs_in_city: int = env_config['max_rail_pairs_in_city']
-            self.observation_builder_config: Dict = env_config['observation_builder_config']
             self.malfunction_config: Dict[str, Union[float, int]] = env_config['malfunction_config']
             self.speed_ratios: Dict[Dict[float, int], float] = env_config['speed_ratios']
             self.reward_config: int = env_config['reward_config']
