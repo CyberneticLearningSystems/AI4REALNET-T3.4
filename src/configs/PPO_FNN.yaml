@@ -24,6 +24,7 @@ learner_config:
 
 # Controller Config
 controller_config: 
+    model_name: 'FNN_encoder_run3'
     action_size: 5
     # tau: 0.99
     n_features: 12
