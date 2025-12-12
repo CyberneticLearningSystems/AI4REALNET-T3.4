@@ -9,6 +9,7 @@ from flatland.envs.rail_grid_transition_map import RailGridTransitionMap
 from flatland.envs.grid.rail_env_grid import RailEnvTransitions
 from flatland.envs.rail_trainrun_data_structures import Waypoint
 from flatland.envs.observations import GlobalObsForRailEnv
+from flatland.envs.observations import TreeObsForRailEnv
 
 
 def rail_generator_from_grid_map(grid_map, level_free_positions):
@@ -36,7 +37,7 @@ def timetable_generator_from_timetable(timetable):
 
 def load_scenario_from_json(
     scenario_path: str,
-    observation_builder=GlobalObsForRailEnv(),
+    observation_builder=TreeObsForRailEnv,
     max_agents: Optional[int] = None
 ) -> RailEnv:
     with open(scenario_path, 'r') as f:
@@ -91,7 +92,7 @@ def load_scenario_from_json(
         timetable_generator = timetable_generator_from_timetable(timetable),
         obs_builder_object = observation_builder,
     )
-
+    
     env.stations = data['stations']
 
     return env
