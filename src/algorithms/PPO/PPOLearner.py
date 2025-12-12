@@ -1,4 +1,5 @@
 import os
+import json
 import wandb
 import numpy as np
 from itertools import chain
@@ -26,8 +27,8 @@ from src.utils.observation.normalisation import FlatlandNormalisation
 class PPOLearner():
     """
     Learner class for the PPO Algorithm.
-    # TODO: Check for compatibility with Gym and PettingZoo environments
     """
+    # TODO: Check for compatibility with Gym and PettingZoo environments
     def __init__(self, controller_config: ControllerConfig, learner_config: Dict, env_config: BaseEnvConfig, device: str = None) -> None:
         # Initialise environment and set controller / learning parameters
         self.env_config = env_config
@@ -46,7 +47,8 @@ class PPOLearner():
         self.total_episodes: int = 0
 
         # Initialise wandb for logging
-        self._init_wandb(learner_config)
+        if learner_config.get('use_wandb', True): # this can optionally be set to false for testing (otherwise it is not an element of learner_config)
+            self._init_wandb(learner_config)
 
 
     def _init_controller(self, config: ControllerConfig) -> None:
@@ -54,6 +56,8 @@ class PPOLearner():
         self.n_nodes: int = config.config_dict['n_nodes']
         self.state_size: int = config.config_dict['state_size']
         self.controller: Union[PPOController, LSTMController, Controller] = config.create_controller()
+        if self.controller_config.config_dict.get('model_name', None):
+            self._load_model(self.controller_config.config_dict['pretrained_model_path'])
 
 
     def _init_learning_params(self, learner_config: Dict) -> None:
@@ -135,8 +139,6 @@ class PPOLearner():
             print(f'\nError received: {e}. Saving current model parameters before shutting down.\n')
         finally:
             wandb.finish()
-            if interrupted:
-                self._save_model()
             self._save_model()
 
     
@@ -211,7 +213,16 @@ class PPOLearner():
         torch.save(self.controller.actor_network.state_dict(), os.path.join(savepath, 'actor.pth'))
         torch.save(self.controller.critic_network.state_dict(), os.path.join(savepath, 'critic.pth'))
         torch.save(self.controller.encoder_network.state_dict(), os.path.join(savepath, 'encoder.pth'))
-        print(f'Model parameters saved to {savepath}')
+        json.dump(self.controller_config.config_dict, open(os.path.join(savepath, 'controller_config.json'), 'w'))
+        print(f'Model parameters and configuration saved to {savepath}')
+
+
+    def _load_model(self, loadpath: str) -> None:
+        """Load controller parameters from disk."""
+        self.controller.actor_network.load_state_dict(torch.load(os.path.join(loadpath, 'actor.pth')))
+        self.controller.critic_network.load_state_dict(torch.load(os.path.join(loadpath, 'critic.pth')))
+        self.controller.encoder_network.load_state_dict(torch.load(os.path.join(loadpath, 'encoder.pth')))
+        print(f'Model parameters loaded from {loadpath}')
 
 
     def _build_optimiser(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
@@ -375,14 +386,28 @@ class PPOLearner():
                     gaes[t] = gae
 
                 gae_tensor = torch.stack(gaes) # (traj_len, 1)
-                self.rollout.episodes[idx]['gaes'][agent] = gae_tensor.squeeze(-1)
+                self.rollout.episodes[idx]['gaes'][agent] = gae_tensor.squeeze(-1) # (traj_len)
 
         return self._normalise_gaes()
 
     
-    def _normalise_gaes(self) -> Tuple[float, float]:
+    def _normalise_gaes(self) -> Tuple[float, float, float, float]:
+        """
+        Normalises the GAEs across the whole batch (all episodes and agents in the rollout buffer). For logging purposes, the mean and standard deviation of the batch before and after normalisation are returned. After normalisation, mean 0 and std 1 are expected.
+
+        Parameters:
+            None
+        
+        Returns:
+            raw_gae_mean (float): Mean of the raw GAEs before normalisation.
+            raw_gae_std (float): Standard deviation of the raw GAEs before normalisation.
+            gae_mean (float): Mean of the normalised GAEs.
+            gae_std (float): Standard deviation of the normalised GAEs.
+        """
+
         n_episodes = len(self.rollout.episodes)
 
+        # new size: (n_episodes * n_agents * traj_len, 1)
         stacked_gaes = torch.cat([torch.cat(self.rollout.episodes[episode]['gaes']) for episode in range(n_episodes)], dim=0)
 
         raw_gae_mean = stacked_gaes.mean()

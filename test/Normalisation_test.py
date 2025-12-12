@@ -1,11 +1,21 @@
 ﻿import unittest
 import torch
+from typing import List, Dict
 
+# ObservationTest functions / classes
 from src.utils.observation.RunningMeanStd import RunningMeanStd, FeatureRunningMeanStd
 from src.utils.observation.normalisation import Normalisation, FlatlandNormalisation
 
+# PPOLearner normalisation classes
+from src.algorithms.PPO.PPOLearner import PPOLearner
+from src.utils.file_utils import load_config_file
+from src.utils.observation.obs_utils import calculate_state_size
+from src.configs.EnvConfig import _resolve_env_config, BaseEnvConfig
+from src.configs.ControllerConfigs import PPOControllerConfig
+from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
 
-class NormalisationTest(unittest.TestCase):
+
+class ObservationTest(unittest.TestCase):
     def setUp(self):
         self.single_feature_batch = torch.tensor([[1.0, 2.0, 3.0],
                                                   [4.0, 5.0, 6.0]], dtype=torch.float32)
@@ -78,3 +88,166 @@ class NormalisationTest(unittest.TestCase):
 
         self.assertTrue(torch.allclose(normalised, expected, atol=1e-6))
 
+
+class PPOLearnerNormalisationTest(unittest.TestCase):
+    def setUp(self):
+        # set and load config file
+        config_path = 'src/configs/PPO_FNN.yaml'
+        config = load_config_file(config_path)
+
+        # prepare environment config
+        env_config = _resolve_env_config(config['environment_config'])
+
+        # prepare controller config and setup parallelisation
+        learner_config = config['learner_config']
+        learner_config['use_wandb'] = False  # Disable wandb for testing
+
+        # prepare controller
+        controller_config_dict = config['controller_config']
+        env_type = getattr(env_config, 'env_type', 'flatland')
+        if env_type == 'flatland':
+            n_nodes, state_size = calculate_state_size(env_config.observation_builder_config['max_depth'])
+            controller_config_dict['n_nodes'] = n_nodes
+            controller_config_dict['state_size'] = state_size
+        else:
+            controller_config_dict['state_size'] = getattr(env_config, 'state_size')
+            controller_config_dict['action_size'] = getattr(env_config, 'action_size')
+            controller_config_dict['n_nodes'] = controller_config_dict.get('n_nodes', 1)
+            controller_config_dict['n_features'] = controller_config_dict['state_size']
+        controller_config = PPOControllerConfig(controller_config_dict)
+
+        self.learner = PPOLearner(controller_config=controller_config,
+                             learner_config=learner_config,
+                             env_config=env_config,
+                             device='cpu')
+        
+        # test tensor for episodes of length 9
+        self.batch = torch.tensor([[10.0, 20.0, 30.0, 
+                                    40.0, 50.0, 60.0, 
+                                    70.0, 80.0, 90.0]], dtype=torch.float32)
+        
+
+        self.batch_average = torch.mean(self.batch)
+        self.batch_std = torch.std(self.batch).clamp(min=1e-8)
+
+        self.batch_normalised = (self.batch - self.batch_average) / self.batch_std
+
+        self.episode_dict: Dict = {
+            'states': [],
+            'state_values': [],
+            'actions': [],
+            'log_probs': [],
+            'rewards': [],
+            'next_states': [],
+            'next_state_values': [],
+            'dones': [],
+            'extras': {},
+            'gaes': [[] for _ in range(2)],
+            'episode_length': [0 for _ in range(2)],
+            'total_episode_reward': [0.0 for _ in range(2)],
+            'per_agent_average_reward': [0.0 for _ in range(2)],
+            'average_episode_length': 0,
+            'total_reward': 0.0,
+            'average_episode_reward': 0.0
+        }
+        self.value_keys = ['states', 'state_values', 'actions', 'log_probs', 'rewards',
+                           'next_states', 'next_state_values', 'dones', 'gaes']
+
+    def create_rollout(self) -> MultiAgentRolloutBuffer:
+        # GOAL: create a rollout with two episodes, two agents, each with the same batch data of length 9
+        rollout = MultiAgentRolloutBuffer(n_agents=2)
+        
+        rollout.episodes: List[Dict] = [self.episode_dict.copy() for _ in range(2)]  # create two episodes based on,
+        
+        for episode in range(2):
+            for key in self.value_keys:
+                rollout.episodes[episode][key] = [self.batch.clone(),
+                                                  self.batch.clone()]
+                rollout.episodes[episode][key] = [self.batch.clone(),
+                                                  self.batch.clone()]
+
+        stacked_gaes = torch.cat([torch.cat(rollout.episodes[episode]['gaes']) for episode in range(2)], dim=0)      
+        self.rollout_mean = stacked_gaes.mean()
+        self.rollout_std = stacked_gaes.std().clamp(min=1e-8)
+    
+        return rollout
+    
+    def create_transition(self) -> MultiAgentRolloutBuffer:
+        rollout = MultiAgentRolloutBuffer(n_agents=2)
+        self.rewards = torch.cat([self.batch.clone() for _ in range(4)], dim=0)
+        self.rewards_mean = self.rewards.mean()
+        self.rewards_std = self.rewards.std().clamp(min=1e-8)
+        rollout.transitions = {'rewards': self.rewards}
+        self.normalised_rewards = (self.rewards - self.rewards_mean) / self.rewards_std
+        return rollout
+    
+
+    def test_gae_normalisation(self):
+        rollout = self.create_rollout()
+        self.learner.rollout = rollout
+        self.learner.n_agents = 2
+
+        # checking content
+        test_gaes = self.learner.rollout.episodes[0]['gaes'][0]  # access to gaes of agent 0 in episode 0
+        verfication_gaes = rollout.episodes[0]['gaes'][0]
+        self.assertTrue(torch.equal(test_gaes, verfication_gaes))
+
+        # Update normalisation metrics with the batch
+        raw_gae_mean, raw_gae_std, gae_mean, gae_std = self.learner._normalise_gaes()
+
+        # Result printout for verification
+        print(f"\n{'Metric':<20} {'Calculated':<15} {'Target':<15} {'Difference':<15}")
+        print("-" * 65)
+        print(f"{'Raw GAE Mean':<20} {raw_gae_mean:<15.5f} {self.rollout_mean.item():<15.5f} {abs(raw_gae_mean - self.rollout_mean.item()):<15.5f}")
+        print(f"{'Raw GAE Std':<20} {raw_gae_std:<15.5f} {self.rollout_std.item():<15.5f} {abs(raw_gae_std - self.rollout_std.item()):<15.5f}")
+        print(f"{'GAE Mean':<20} {gae_mean:<15.5f} {0.0:<15.5f} {abs(gae_mean - 0.0):<15.5f}")
+        print(f"{'GAE Std':<20} {gae_std:<15.5f} {1.0:<15.5f} {abs(gae_std - 1.0):<15.5f}\n")
+
+        # extract normalised gaes for further verification
+        normalised_gaes = self.learner.rollout.episodes[0]['gaes'][0]  # access to gaes of agent 0 in episode 0
+        print(f"{'Normalised GAEs':<20} {normalised_gaes}")
+        print(f"{'Expected Normalised':<20} {self.batch_normalised}\n")
+        
+
+        # Assertions
+        self.assertAlmostEqual(raw_gae_mean, self.rollout_mean.item(), places=3)
+        self.assertAlmostEqual(raw_gae_std, self.rollout_std.item(), places=3)
+        self.assertAlmostEqual(gae_mean, 0.0, places=3)
+        self.assertAlmostEqual(gae_std, 1.0, places=3)
+
+    def test_reward_normalisation(self):
+        rollout = self.create_transition()
+        self.learner.rollout = rollout
+        # self.learner.n_agents = 2
+
+        # compare initial rewards
+        reward_transitions: torch.Tensor = self.learner.rollout.transitions['rewards']
+        reward_raw_mean = reward_transitions.mean()
+        reward_raw_std = reward_transitions.std().clamp(min=1e-8)
+        self.assertEqual(reward_raw_mean.item(), self.rewards_mean.item())
+        self.assertEqual(reward_raw_std.item(), self.rewards_std.item())
+
+        # Update normalisation metrics with the batch
+        self.learner._normalise_rewards()
+
+        # extract normalised rewards for further verification
+        reward_mean = self.learner.rollout.transitions['rewards'].mean()
+        reward_std = self.learner.rollout.transitions['rewards'].std().clamp(min=1e-8)
+
+        # Result printout for verification
+        print(f"\n{'Metric':<20} {'Calculated':<15} {'Target':<15} {'Difference':<15}")
+        print("-" * 65)
+        print(f"{'Raw GAE Mean':<20} {reward_raw_mean:<15.5f} {self.rewards_mean.item():<15.5f} {abs(reward_raw_mean - self.rewards_mean.item()):<15.5f}")
+        print(f"{'Raw GAE Std':<20} {reward_raw_std:<15.5f} {self.rewards_std.item():<15.5f} {abs(reward_raw_std - self.rewards_std.item()):<15.5f}")
+        print(f"{'GAE Mean':<20} {reward_mean:<15.5f} {0.0:<15.5f} {abs(reward_mean - 0.0):<15.5f}")
+        print(f"{'GAE Std':<20} {reward_std:<15.5f} {1.0:<15.5f} {abs(reward_std - 1.0):<15.5f}\n")
+
+         # extract normalised rewards for further verification
+        print(f"{'Normalised Rewards':<20} {self.learner.rollout.transitions['rewards']}")
+        print(f"{'Expected Normalised':<20} {self.normalised_rewards}\n")
+
+        # Assertions
+        self.assertAlmostEqual(self.learner.rollout.transitions['rewards'].mean(), self.normalised_rewards.mean().item(), places=3)
+        self.assertAlmostEqual(reward_raw_std.item(), self.rewards_std.item(), places=3)
+        self.assertAlmostEqual(reward_mean.item(), 0.0, places=3)
+        self.assertAlmostEqual(reward_std.item(), 1.0, places=3)

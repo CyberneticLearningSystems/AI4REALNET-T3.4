@@ -20,3 +20,5 @@ The former is the primary ``EnvConfig`` used during development, whereas the lat
 
 ## ControllerConfig
 Similarly to ``EnvConfig``, a base ``ControllerConfig`` class is given, which allows for controllers to be switched modularly within ``Learner`` and ``Worker`` classes. The class is very simple, and simply initialises the [controller class](../controllers/README.md) and returns it with the ``create_controller()`` function. 
+
+If you want to load a controller, the ``model_name`` argument in the ``controller_config`` must be given and not empty. The model name must correspond to a folder the the ``models`` directory.
