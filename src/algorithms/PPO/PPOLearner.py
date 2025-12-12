@@ -56,6 +56,8 @@ class PPOLearner():
         self.n_nodes: int = config.config_dict['n_nodes']
         self.state_size: int = config.config_dict['state_size']
         self.controller: Union[PPOController, LSTMController, Controller] = config.create_controller()
+        if self.controller_config.config_dict.get('model_name', None):
+            self._load_model(self.controller_config.config_dict['pretrained_model_path'])
 
 
     def _init_learning_params(self, learner_config: Dict) -> None:
@@ -213,6 +215,14 @@ class PPOLearner():
         torch.save(self.controller.encoder_network.state_dict(), os.path.join(savepath, 'encoder.pth'))
         json.dump(self.controller_config.config_dict, open(os.path.join(savepath, 'controller_config.json'), 'w'))
         print(f'Model parameters and configuration saved to {savepath}')
+
+
+    def _load_model(self, loadpath: str) -> None:
+        """Load controller parameters from disk."""
+        self.controller.actor_network.load_state_dict(torch.load(os.path.join(loadpath, 'actor.pth')))
+        self.controller.critic_network.load_state_dict(torch.load(os.path.join(loadpath, 'critic.pth')))
+        self.controller.encoder_network.load_state_dict(torch.load(os.path.join(loadpath, 'encoder.pth')))
+        print(f'Model parameters loaded from {loadpath}')
 
 
     def _build_optimiser(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
