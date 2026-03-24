@@ -1,0 +1,14 @@
+flatland-rl==4.2.2
+
+# Core scientific stack
+numpy==1.26.4
+scipy==1.15.3
+pandas==2.3.3
+networkx==3.4.2
+tqdm==4.67.3
+
+# Deep learning (used for Blackbox components)
+torch==2.10.0
+
+# Logging / Experiment Tracking
+wandb==0.25.0
